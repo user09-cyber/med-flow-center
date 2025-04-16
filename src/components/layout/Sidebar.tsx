@@ -17,6 +17,7 @@ import {
   UserPlus,
   Users
 } from "lucide-react";
+import { UserRole } from "@/models/types";
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -46,17 +47,44 @@ const SidebarItem = ({ icon: Icon, label, href, isActive, isCollapsed }: Sidebar
 export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { pathname } = useLocation();
-  const { logout } = useAuth();
+  const { logout, userRole } = useAuth();
 
-  const navItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-    { icon: CalendarDays, label: "Appointments", href: "/appointments" },
-    { icon: Users, label: "Patients", href: "/patients" },
-    { icon: FileText, label: "Medical Records", href: "/medical-records" },
-    { icon: ClipboardList, label: "Leave Requests", href: "/leave-requests" },
-    { icon: ShieldCheck, label: "Insurance", href: "/insurance" },
-    { icon: UserPlus, label: "Staff", href: "/staff" },
-  ];
+  // Define navigation items based on user role
+  const getNavItems = () => {
+    const commonItems = [
+      { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+      { icon: CalendarDays, label: "Appointments", href: "/appointments" },
+    ];
+    
+    // Role-specific items
+    if (userRole === "PATIENT") {
+      return [
+        ...commonItems,
+        { icon: FileText, label: "My Records", href: "/my-records" },
+      ];
+    } else if (userRole === "DOCTOR") {
+      return [
+        ...commonItems,
+        { icon: Users, label: "Patients", href: "/patients" },
+        { icon: FileText, label: "Medical Records", href: "/medical-records" },
+        { icon: ClipboardList, label: "Leave Requests", href: "/leave-requests" },
+      ];
+    } else if (userRole === "ADMIN") {
+      return [
+        ...commonItems,
+        { icon: Users, label: "Patients", href: "/patients" },
+        { icon: FileText, label: "Medical Records", href: "/medical-records" },
+        { icon: ClipboardList, label: "Leave Requests", href: "/leave-requests" },
+        { icon: ShieldCheck, label: "Insurance", href: "/insurance" },
+        { icon: UserPlus, label: "Staff", href: "/staff" },
+      ];
+    } else {
+      // Default for other roles or no role
+      return commonItems;
+    }
+  };
+
+  const navItems = getNavItems();
 
   return (
     <div
@@ -96,6 +124,11 @@ export function Sidebar() {
       </div>
 
       <div className="border-t p-2">
+        {!isCollapsed && userRole && (
+          <div className="px-2 py-1 mb-2 text-sm font-medium text-muted-foreground">
+            Current mode: {userRole.toLowerCase()}
+          </div>
+        )}
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 px-2 text-medred hover:bg-medred/5 hover:text-medred"

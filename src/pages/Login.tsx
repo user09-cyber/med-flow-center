@@ -6,37 +6,55 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/components/ui/use-toast";
 
 export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError(null);
 
     try {
       await login(email, password);
     } catch (err) {
-      setError("Invalid email or password. Please try again.");
+      // Error is handled in the login function
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Demo login credentials
-  const handleDemoLogin = async () => {
+  // Demo login credentials for different roles
+  const handleDemoLogin = async (role: string) => {
     setIsLoading(true);
-    setError(null);
-
+    let email = '';
+    
+    switch(role) {
+      case 'admin':
+        email = 'admin@example.com';
+        break;
+      case 'doctor':
+        email = 'doctor@example.com';
+        break;
+      case 'patient':
+        email = 'patient@example.com';
+        break;
+      default:
+        email = 'admin@example.com';
+    }
+    
     try {
-      await login("sarah.johnson@medcenter.com", "password");
+      await login(email, 'password');
     } catch (err) {
-      setError("Demo login failed. Please try again.");
+      toast({
+        title: "Demo Login Failed",
+        description: `Failed to log in as ${role}. Please make sure the user exists.`,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -82,21 +100,39 @@ export function Login() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-medred">{error}</p>}
             <Button type="submit" className="w-full bg-medblue hover:bg-medblue/90" disabled={isLoading}>
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
         </CardContent>
-        <CardFooter>
-          <Button 
-            variant="outline" 
-            className="w-full" 
-            onClick={handleDemoLogin}
-            disabled={isLoading}
-          >
-            Demo Login
-          </Button>
+        <CardFooter className="flex flex-col space-y-2">
+          <div className="text-sm text-center text-gray-500 mb-2">Demo Logins</div>
+          <div className="grid grid-cols-3 gap-2 w-full">
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => handleDemoLogin('admin')}
+              disabled={isLoading}
+            >
+              Admin
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => handleDemoLogin('doctor')}
+              disabled={isLoading}
+            >
+              Doctor
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => handleDemoLogin('patient')}
+              disabled={isLoading}
+            >
+              Patient
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     </div>

@@ -13,33 +13,57 @@ import { LeaveRequests } from "./pages/LeaveRequests";
 import { Insurance } from "./pages/Insurance";
 import NotFound from "./pages/NotFound";
 import { Login } from "./pages/Login";
+import { RoleGuard } from "./components/auth/RoleGuard";
+import { UserRole } from "./models/types";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+      <BrowserRouter>
+        <AuthProvider>
+          <Toaster />
+          <Sonner />
           <Routes>
+            <Route path="/login" element={<Login />} />
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="appointments" element={<Appointments />} />
-              {/* These routes will be implemented later */}
-              <Route path="patients" element={<Dashboard />} />
-              <Route path="medical-records" element={<MedicalRecords />} />
-              <Route path="leave-requests" element={<LeaveRequests />} />
-              <Route path="insurance" element={<Insurance />} />
-              <Route path="staff" element={<Dashboard />} />
+              
+              {/* Patient-only routes */}
+              <Route element={<RoleGuard allowedRoles={[UserRole.PATIENT]} />}>
+                {/* Patient specific routes will be added here */}
+              </Route>
+              
+              {/* Doctor-only routes */}
+              <Route element={<RoleGuard allowedRoles={[UserRole.DOCTOR]} />}>
+                <Route path="medical-records" element={<MedicalRecords />} />
+              </Route>
+              
+              {/* Staff/Admin-only routes */}
+              <Route element={<RoleGuard allowedRoles={[UserRole.ADMIN, UserRole.NURSE, UserRole.RECEPTIONIST]} />}>
+                <Route path="leave-requests" element={<LeaveRequests />} />
+                <Route path="insurance" element={<Insurance />} />
+                <Route path="staff" element={<Dashboard />} />
+              </Route>
+              
+              {/* Global routes that need to be protected but available to all roles */}
+              <Route element={<RoleGuard allowedRoles={[
+                UserRole.ADMIN, 
+                UserRole.DOCTOR, 
+                UserRole.NURSE, 
+                UserRole.RECEPTIONIST,
+                UserRole.PATIENT
+              ]} />}>
+                <Route path="patients" element={<Dashboard />} />
+              </Route>
             </Route>
-            <Route path="login" element={<Login />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+        </AuthProvider>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
