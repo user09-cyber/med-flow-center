@@ -15,7 +15,7 @@ export function RoleGuard({
   redirectTo = "/dashboard", 
   children 
 }: RoleGuardProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, userRole } = useAuth();
   
   if (isLoading) {
     return (
@@ -26,7 +26,7 @@ export function RoleGuard({
   }
   
   // If user is not authenticated or doesn't have the required role
-  if (!user || !allowedRoles.includes(user.role)) {
+  if (!user || (userRole && !allowedRoles.includes(userRole as UserRole))) {
     return <Navigate to={redirectTo} replace />;
   }
   

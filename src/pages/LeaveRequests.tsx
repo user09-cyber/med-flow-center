@@ -1,7 +1,6 @@
 
 import { useEffect, useState } from "react";
 import { LeaveRequest, LeaveStatus, LeaveType } from "@/models/types";
-import apiService from "@/services/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,12 +36,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format, differenceInDays } from "date-fns";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export function LeaveRequests() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const [newRequest, setNewRequest] = useState<Partial<LeaveRequest>>({
     employeeId: user?.id || "",
     employeeName: user?.name || "",
@@ -52,19 +53,8 @@ export function LeaveRequests() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    const fetchLeaveRequests = async () => {
-      try {
-        const data = await apiService.getLeaveRequests();
-        setLeaveRequests(data);
-      } catch (error) {
-        console.error("Failed to fetch leave requests:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchLeaveRequests();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     // Update the new request when user changes
@@ -76,6 +66,49 @@ export function LeaveRequests() {
       }));
     }
   }, [user]);
+
+  const fetchLeaveRequests = async () => {
+    try {
+      setIsLoading(true);
+      
+      let query = supabase
+        .from('leave_requests')
+        .select('*, profiles:user_id(full_name)');
+      
+      // If user is not an admin, only show their own requests
+      if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
+        query = query.eq('user_id', user?.id);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      if (data) {
+        const formattedData = data.map(item => ({
+          id: item.id,
+          employeeId: item.user_id,
+          employeeName: item.profiles?.full_name || 'Unknown',
+          startDate: item.start_date,
+          endDate: item.end_date,
+          type: item.type as LeaveType || LeaveType.OTHER,
+          reason: item.reason || '',
+          status: item.status as LeaveStatus || LeaveStatus.PENDING
+        }));
+        
+        setLeaveRequests(formattedData);
+      }
+    } catch (error) {
+      console.error("Failed to fetch leave requests:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load leave requests",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -89,17 +122,89 @@ export function LeaveRequests() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const createdRequest = await apiService.createLeaveRequest(newRequest as Omit<LeaveRequest, "id" | "status">);
-      setLeaveRequests((prev) => [createdRequest, ...prev]);
-      setDialogOpen(false);
-      setNewRequest({
-        employeeId: user?.id || "",
-        employeeName: user?.name || "",
-        type: LeaveType.VACATION,
-        status: LeaveStatus.PENDING
-      });
+      const leaveData = {
+        user_id: user?.id,
+        start_date: newRequest.startDate,
+        end_date: newRequest.endDate,
+        type: newRequest.type,
+        reason: newRequest.reason,
+        status: 'PENDING'
+      };
+      
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .insert(leaveData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      if (data) {
+        // Format the data to match our frontend model
+        const newLeaveRequest: LeaveRequest = {
+          id: data.id,
+          employeeId: data.user_id,
+          employeeName: user?.name || 'Unknown',
+          startDate: data.start_date,
+          endDate: data.end_date,
+          type: data.type as LeaveType,
+          reason: data.reason || '',
+          status: data.status as LeaveStatus
+        };
+        
+        setLeaveRequests((prev) => [newLeaveRequest, ...prev]);
+        setDialogOpen(false);
+        setNewRequest({
+          employeeId: user?.id || "",
+          employeeName: user?.name || "",
+          type: LeaveType.VACATION,
+          status: LeaveStatus.PENDING
+        });
+        
+        toast({
+          title: "Success",
+          description: "Leave request submitted successfully",
+        });
+      }
     } catch (error) {
       console.error("Failed to create leave request:", error);
+      toast({
+        title: "Error",
+        description: "Failed to submit leave request",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleApproveReject = async (requestId: string, newStatus: LeaveStatus) => {
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({ status: newStatus })
+        .eq('id', requestId);
+      
+      if (error) throw error;
+      
+      // Update the local state
+      setLeaveRequests(prev => 
+        prev.map(request => 
+          request.id === requestId 
+            ? { ...request, status: newStatus } 
+            : request
+        )
+      );
+      
+      toast({
+        title: "Success",
+        description: `Request ${newStatus.toLowerCase()}`,
+      });
+    } catch (error) {
+      console.error("Failed to update leave request:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update request status",
+        variant: "destructive"
+      });
     }
   };
 
@@ -133,6 +238,8 @@ export function LeaveRequests() {
     const end = new Date(endDate);
     return differenceInDays(end, start) + 1; // inclusive of start and end day
   };
+  
+  const canApproveRequests = userRole === 'ADMIN' || userRole === 'DOCTOR';
 
   return (
     <div className="space-y-6">
@@ -250,13 +357,13 @@ export function LeaveRequests() {
                 <TableHead>Days</TableHead>
                 <TableHead>Reason</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {canApproveRequests && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRequests.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={canApproveRequests ? 7 : 6} className="text-center py-10 text-muted-foreground">
                     No leave requests found
                   </TableCell>
                 </TableRow>
@@ -285,23 +392,30 @@ export function LeaveRequests() {
                       </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
-                    <TableCell className="text-right">
-                      {request.status === "PENDING" && (
-                        <div className="flex justify-end gap-2">
-                          <Button size="icon" variant="outline" className="text-medgreen hover:text-white hover:bg-medgreen">
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="outline" className="text-medred hover:text-white hover:bg-medred">
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                      {request.status === "APPROVED" && request.approvedBy && (
-                        <div className="text-sm text-muted-foreground">
-                          <span>Approved by {request.approvedBy}</span>
-                        </div>
-                      )}
-                    </TableCell>
+                    {canApproveRequests && (
+                      <TableCell className="text-right">
+                        {request.status === "PENDING" && (
+                          <div className="flex justify-end gap-2">
+                            <Button 
+                              size="icon" 
+                              variant="outline" 
+                              className="text-medgreen hover:text-white hover:bg-medgreen"
+                              onClick={() => handleApproveReject(request.id, LeaveStatus.APPROVED)}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="outline" 
+                              className="text-medred hover:text-white hover:bg-medred"
+                              onClick={() => handleApproveReject(request.id, LeaveStatus.REJECTED)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
